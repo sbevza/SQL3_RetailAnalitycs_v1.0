@@ -214,69 +214,69 @@ $$
 $$;
 
 
--- DO
--- $$
---     DECLARE
---         path_dir text;
---     BEGIN
---         path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
---         -- поменять на свой путь
+DO
+$$
+    DECLARE
+        path_dir text;
+    BEGIN
+        path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+        -- поменять на свой путь
+
+--         Очищаем другие таблицы перед импортом
+        TRUNCATE TABLE personal_data CASCADE;
+        TRUNCATE TABLE Cards CASCADE;
+        TRUNCATE TABLE Stores CASCADE;
+        TRUNCATE TABLE Transactions CASCADE;
+        TRUNCATE TABLE Checks CASCADE;
+        TRUNCATE TABLE Groups_SKU CASCADE;
+        TRUNCATE TABLE SKU CASCADE;
+
+
+-- TRUNCATE TABLE Analysis_Date CASCADE;
+
+        PERFORM import_from_tsv(
+                'personal_data',
+                path_dir || 'Personal_Data_Mini.tsv'
+            );
 --
--- --         Очищаем другие таблицы перед импортом
---         TRUNCATE TABLE personal_data CASCADE;
---         TRUNCATE TABLE Cards CASCADE;
---         TRUNCATE TABLE Stores CASCADE;
---         TRUNCATE TABLE Transactions CASCADE;
---         TRUNCATE TABLE Checks CASCADE;
---         TRUNCATE TABLE Groups_SKU CASCADE;
---         TRUNCATE TABLE SKU CASCADE;
---
---
--- -- TRUNCATE TABLE Analysis_Date CASCADE;
---
---         PERFORM import_from_tsv(
---                 'personal_data',
---                 path_dir || 'Personal_Data_Mini.tsv'
---             );
--- --
---         PERFORM import_from_tsv(
---                 'cards',
---                 path_dir || 'Cards_Mini.tsv'
---             );
---
---         PERFORM import_from_tsv(
---                 'groups_sku',
---                 path_dir || 'Groups_SKU_Mini.tsv'
---             );
---
---         PERFORM import_from_tsv(
---                 'sku',
---                 path_dir || 'SKU_Mini.tsv'
---             );
---
---         PERFORM import_from_tsv(
---                 'stores',
---                 path_dir || 'Stores_Mini.tsv'
---             );
---
---         PERFORM import_from_tsv(
---                 'transactions',
---                 path_dir || 'Transactions_Mini.tsv'
---             );
---
---         PERFORM import_from_tsv(
---                 'checks',
---                 path_dir || 'Checks_Mini.tsv'
---             );
---
---
---         PERFORM import_from_tsv(
---                 'analysis_date',
---                 path_dir || 'Date_Of_Analysis_Formation.tsv'
---             );
---
---     END
--- $$;
+        PERFORM import_from_tsv(
+                'cards',
+                path_dir || 'Cards_Mini.tsv'
+            );
+
+        PERFORM import_from_tsv(
+                'groups_sku',
+                path_dir || 'Groups_SKU_Mini.tsv'
+            );
+
+        PERFORM import_from_tsv(
+                'sku',
+                path_dir || 'SKU_Mini.tsv'
+            );
+
+        PERFORM import_from_tsv(
+                'stores',
+                path_dir || 'Stores_Mini.tsv'
+            );
+
+        PERFORM import_from_tsv(
+                'transactions',
+                path_dir || 'Transactions_Mini.tsv'
+            );
+
+        PERFORM import_from_tsv(
+                'checks',
+                path_dir || 'Checks_Mini.tsv'
+            );
+
+
+        PERFORM import_from_tsv(
+                'analysis_date',
+                path_dir || 'Date_Of_Analysis_Formation.tsv'
+            );
+
+    END
+$$;
 
 
 DO
