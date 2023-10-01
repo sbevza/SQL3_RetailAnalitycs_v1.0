@@ -187,9 +187,6 @@ SELECT dg.customer_id,
 FROM demanded_groups dg;
 
 
-
-
-
 ---------- Periods View ----------
 CREATE VIEW Periods AS
 WITH CommonData AS (
