@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS Transactions
     Transaction_DateTime TIMESTAMP,
     Transaction_Store_ID INT,
     FOREIGN KEY (Customer_Card_ID) REFERENCES Cards (Customer_Card_ID)
- );
+);
 
 CREATE TABLE IF NOT EXISTS Checks
 (
@@ -162,8 +162,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
-    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
---     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+--     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
@@ -188,8 +188,31 @@ END;
 $$;
 
 
+CREATE OR REPLACE PROCEDURE export_datasets_mini()
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    path_dir text;
+BEGIN
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/src/';
+    BEGIN
+        CALL export_to_tsv('personal_data', path_dir || 'Personal_Data_Mini.tsv');
+        CALL export_to_tsv('cards', path_dir || 'Cards_Mini.tsv');
+        CALL export_to_tsv('groups_sku', path_dir || 'Groups_SKU_Mini.tsv');
+        CALL export_to_tsv('sku', path_dir || 'SKU_Mini.tsv');
+        CALL export_to_tsv('stores', path_dir || 'Stores_Mini.tsv');
+        CALL export_to_tsv('transactions', path_dir || 'Transactions_Mini.tsv');
+        CALL export_to_tsv('checks', path_dir || 'Checks_Mini.tsv');
+        CALL export_to_tsv('analysis_date', path_dir || 'Date_Of_Analysis_Formation.tsv');
+    END;
+END;
+$$;
+
+
+
 
 CALL import_datasets_mini();
 CALL import_datasets();
+CALL export_datasets_mini();
 
 
