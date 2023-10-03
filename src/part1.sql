@@ -220,7 +220,7 @@ $$
     DECLARE
         path_dir text;
     BEGIN
-        path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+        path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
         -- поменять на свой путь
 
 --         Очищаем другие таблицы перед импортом
