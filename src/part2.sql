@@ -148,7 +148,7 @@ WITH CommonData AS (SELECT pd.customer_id,
                            gs.group_id,
                            t.transaction_id,
                            t.transaction_datetime,
-                           ch.SKU_Discount / ch.SKU_Summ AS SKU_Discount_Ratio
+                           ch.SKU_Discount / ch.SKU_Summ AS Group_Min_Discount
                     FROM personal_data pd
                              JOIN public.cards c ON pd.customer_id = c.customer_id
                              JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -161,7 +161,7 @@ WITH CommonData AS (SELECT pd.customer_id,
                                   MIN(transaction_datetime)         AS First_Group_Purchase_Date,
                                   MAX(transaction_datetime)         AS Last_Group_Purchase_Date,
                                   COUNT(*)                          AS Group_Purchase,
-                                  ROUND(MIN(SKU_Discount_Ratio), 2) AS Group_Min_Discount
+                                  ROUND(MIN(Group_Min_Discount), 2) AS Group_Min_Discount
                            FROM CommonData
                            GROUP BY customer_id, group_id)
 
@@ -207,12 +207,11 @@ CREATE OR REPLACE VIEW Groups AS
 WITH affinity_index_groups
          AS (SELECT ph.customer_id,
                     p.group_id,
-                    (p.group_purchase / count(DISTINCT ph.transaction_id)::numeric) AS group_affinity_index
+                    (p.group_purchase / COUNT(DISTINCT ph.transaction_id)::numeric) AS group_affinity_index
              FROM Purchase_history ph
                       JOIN Periods p ON p.customer_id = ph.customer_id
              WHERE ph.transaction_datetime BETWEEN first_group_purchase_date AND last_group_purchase_date
-             GROUP BY ph.customer_id, p.group_id, p.group_purchase
-             ORDER BY customer_id),
+             GROUP BY ph.customer_id, p.group_id, p.group_purchase),
 
      churn_index_groups
          AS (SELECT ph.customer_id,
@@ -224,8 +223,7 @@ WITH affinity_index_groups
                         END AS Group_Churn_Rate
              FROM Purchase_history ph
                       JOIN Periods p ON p.customer_id = ph.customer_id
-             GROUP BY ph.customer_id, ph.group_id
-             ORDER BY ph.customer_id, ph.group_id),
+             GROUP BY ph.customer_id, ph.group_id),
 
      group_consumption_intervals AS (SELECT ph.customer_id,
                                             ph.transaction_id,
@@ -240,19 +238,22 @@ WITH affinity_index_groups
      discounts_for_groups
          AS (SELECT ph.customer_id,
                     ph.group_id,
+                    p.Group_Purchase,
                     ROUND(COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric, 2) AS Group_Discount_Share,
                     MIN(p.group_min_discount)                                               AS Group_Minimum_Discount
 --                     ROUND(ph.Group_Summ_Paid / ph.Group_Summ::numeric, 2)                   AS Group_Average_Discount
-             FROM Purchase_history ph
-                      JOIN checks ch ON ph.transaction_id = ch.transaction_id
+             FROM checks ch
+                      JOIN public.sku s ON s.sku_id = ch.sku_id
+                      JOIN Purchase_history ph ON ph.transaction_id = ch.transaction_id
+                 AND s.group_id = ph.group_id
                       JOIN Periods p on ph.customer_id = p.customer_id AND p.group_id = ph.group_id
-             WHERE SKU_Discount > 0
+             WHERE ch.SKU_Discount > 0 -- AND p.group_min_discount <> 0
              GROUP BY ph.customer_id, ph.group_id, p.Group_Purchase
              ORDER BY ph.customer_id, ph.group_id),
 
      margin_for_customer AS (SELECT customer_id,
                                     group_id,
-                                    sum(group_summ_paid - group_cost)::numeric as group_margin
+                                    SUM(group_summ_paid - group_cost)::numeric AS group_margin
                              FROM purchase_history
                              GROUP BY customer_id, group_id
                              ORDER BY customer_id, group_id),
@@ -307,3 +308,20 @@ FROM Purchase_history ph
 GROUP BY ph.customer_id, ph.group_id, p.Group_Frequency
 ORDER BY ph.customer_id, ph.group_id
 ;
+
+SELECT ph.customer_id,
+       ph.group_id,
+       ch.*
+--        p.Group_Purchase,
+--        ROUND(COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric, 2) AS Group_Discount_Share
+FROM checks ch
+         JOIN public.sku s ON s.sku_id = ch.sku_id
+         JOIN Purchase_history ph ON ph.transaction_id = ch.transaction_id AND s.group_id = ph.group_id
+--          JOIN Periods p on ph.customer_id = p.customer_id AND p.group_id = ph.group_id
+WHERE ch.SKU_Discount > 0
+
+--   AND ph.customer_id = 1 AND ph.group_id = 1
+-- GROUP BY ph.customer_id, ph.group_id, p.Group_Purchase
+ORDER BY ph.customer_id, ph.group_id
+
+
