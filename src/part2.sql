@@ -288,24 +288,6 @@ FROM affinity_index_groups aig
          JOIN stability_index_group sig ON aig.customer_id = sig.customer_id AND aig.group_id = sig.group_id
          JOIN discounts_for_groups dfg ON aig.customer_id = dfg.customer_id AND aig.group_id = dfg.group_id
          JOIN margin_for_customer mfc ON aig.customer_id = mfc.customer_id AND aig.group_id = mfc.group_id
--- GROUP BY
-;
-
-
-SELECT ph.customer_id,
-       ph.group_id,
-       CASE
-           WHEN p.Group_Frequency = 0 THEN 0
-           ELSE (
-                            (SELECT MAX(analysis_formation) FROM analysis_date)::date
-                        - MAX(ph.Transaction_DateTime)::date
-                    ) /
-                MAX(p.Group_Frequency) OVER (PARTITION BY ph.customer_id, ph.group_id) -- Используем оконную функцию
-           END AS Group_Churn_Rate
-FROM Purchase_history ph
-         JOIN Periods p ON p.customer_id = ph.customer_id
-GROUP BY ph.customer_id, ph.group_id, p.Group_Frequency
-ORDER BY ph.customer_id, ph.group_id
 ;
 
 SELECT ph.customer_id,

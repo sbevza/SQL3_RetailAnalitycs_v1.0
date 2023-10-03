@@ -75,270 +75,118 @@ CREATE TABLE IF NOT EXISTS Analysis_Date
 
 
 -- Процедура импорта данных в таблицу
-CREATE OR REPLACE FUNCTION import_from_csv(
-    tablename text,
-    filename text,
-    delimiter text DEFAULT ','
+CREATE OR REPLACE PROCEDURE import_from_csv(
+    IN table_name text,
+    IN filename text,
+    IN delimiter text
 )
-    RETURNS void
     LANGUAGE plpgsql
-AS
-$$
+AS $$
+BEGIN
+    EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', table_name, filename, delimiter);
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE import_from_tsv(
+    IN table_name text,
+    IN filename text
+)
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    CALL import_from_csv(table_name, filename , E'\t');
+END;
+$$;
+
+
+CREATE OR REPLACE PROCEDURE export_to_csv(
+    IN table_name text,
+    IN filename text,
+    IN delimiter text
+)
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    EXECUTE format('COPY %I TO %L WITH CSV DELIMITER %L', table_name, filename, delimiter);
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE export_to_tsv(
+    IN table_name text,
+    IN filename text
+)
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    CALL export_to_csv(table_name, filename , E'\t');
+END;
+$$;
+
+
+
+CREATE OR REPLACE PROCEDURE import_datasets()
+    LANGUAGE plpgsql
+AS $$
 DECLARE
-    seq_name text;
-    max_id   bigint;
+    path_dir text;
 BEGIN
-    SET datestyle TO 'ISO, DMY';
-    EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', tablename, filename, delimiter);
-    IF EXISTS (SELECT 1
-               FROM information_schema.columns
-               WHERE table_name = tablename
-                 AND column_name = 'id') THEN
-        SELECT pg_get_serial_sequence(tablename, 'id') INTO seq_name;
-        EXECUTE format('SELECT MAX(id) FROM %I', tablename) INTO max_id;
-        IF max_id IS NOT NULL THEN
-            EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
-        END IF;
-    END IF;
-END;
-$$;
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
-CREATE OR REPLACE FUNCTION import_from_tsv(
-    table_name text,
-    filename text
-)
-    RETURNS void
-    LANGUAGE plpgsql
-AS
-$$
-BEGIN
-    PERFORM import_from_csv(table_name, filename, E'\t');
-END;
-$$;
+    TRUNCATE TABLE personal_data CASCADE;
+    TRUNCATE TABLE cards CASCADE;
+    TRUNCATE TABLE groups_sku CASCADE;
+    TRUNCATE TABLE sku CASCADE;
+    TRUNCATE TABLE stores CASCADE;
+    TRUNCATE TABLE transactions CASCADE;
+    TRUNCATE TABLE checks CASCADE;
+    TRUNCATE TABLE analysis_date CASCADE;
 
-CREATE OR REPLACE FUNCTION export_to_csv(
-    table_name text,
-    filename text,
-    delimiter char DEFAULT ','
-)
-    RETURNS void
-    LANGUAGE plpgsql
-AS
-$$
-BEGIN
-    EXECUTE format(
-            'COPY %I TO %L WITH CSV DELIMITER %L',
-            table_name,
-            filename,
-            delimiter
-        );
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION export_to_tsv(
-    table_name text,
-    filename text
-)
-    RETURNS void
-    LANGUAGE plpgsql
-AS
-$$
-BEGIN
-    PERFORM export_to_csv(table_name, filename, E'\t');
-END;
-$$;
-
--- Заполнения таблиц командами импорта из таблиц:
-DO
-$$
-    DECLARE
-        path_dir text;
     BEGIN
-        path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
-        -- поменять на свой путь
-
---         Очищаем другие таблицы перед импортом
-        TRUNCATE TABLE personal_data CASCADE;
-        TRUNCATE TABLE Cards CASCADE;
-        TRUNCATE TABLE Stores CASCADE;
-        TRUNCATE TABLE Transactions CASCADE;
-        TRUNCATE TABLE Checks CASCADE;
-        TRUNCATE TABLE Groups_SKU CASCADE;
-        TRUNCATE TABLE SKU CASCADE;
-        TRUNCATE TABLE Analysis_Date CASCADE;
-
-
--- TRUNCATE TABLE Analysis_Date CASCADE;
-
-        PERFORM import_from_tsv(
-                'personal_data',
-                path_dir || 'Personal_Data.tsv'
-            );
---
-        PERFORM import_from_tsv(
-                'cards',
-                path_dir || 'Cards.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'groups_sku',
-                path_dir || 'Groups_SKU.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'sku',
-                path_dir || 'SKU.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'stores',
-                path_dir || 'Stores.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'transactions',
-                path_dir || 'Transactions.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'checks',
-                path_dir || 'Checks.tsv'
-            );
-
-
-        PERFORM import_from_tsv(
-                'analysis_date',
-                path_dir || 'Date_Of_Analysis_Formation.tsv'
-            );
-
-    END
+        CALL import_from_tsv('personal_data', path_dir || 'Personal_Data.tsv');
+        CALL import_from_tsv('cards', path_dir || 'Cards.tsv');
+        CALL import_from_tsv('groups_sku', path_dir || 'Groups_SKU.tsv');
+        CALL import_from_tsv('sku', path_dir || 'SKU.tsv');
+        CALL import_from_tsv('stores', path_dir || 'Stores.tsv');
+        CALL import_from_tsv('transactions', path_dir || 'Transactions.tsv');
+        CALL import_from_tsv('checks', path_dir || 'Checks.tsv');
+        CALL import_from_tsv('analysis_date', path_dir || 'Date_Of_Analysis_Formation.tsv');
+    END;
+END;
 $$;
 
+CREATE OR REPLACE PROCEDURE import_datasets_mini()
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    path_dir text;
+BEGIN
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
-DO
-$$
-    DECLARE
-        path_dir text;
+    TRUNCATE TABLE personal_data CASCADE;
+    TRUNCATE TABLE cards CASCADE;
+    TRUNCATE TABLE groups_sku CASCADE;
+    TRUNCATE TABLE sku CASCADE;
+    TRUNCATE TABLE stores CASCADE;
+    TRUNCATE TABLE transactions CASCADE;
+    TRUNCATE TABLE checks CASCADE;
+    TRUNCATE TABLE analysis_date CASCADE;
+
     BEGIN
-        path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
-        -- поменять на свой путь
-
---         Очищаем другие таблицы перед импортом
-        TRUNCATE TABLE personal_data CASCADE;
-        TRUNCATE TABLE Cards CASCADE;
-        TRUNCATE TABLE Stores CASCADE;
-        TRUNCATE TABLE Transactions CASCADE;
-        TRUNCATE TABLE Checks CASCADE;
-        TRUNCATE TABLE Groups_SKU CASCADE;
-        TRUNCATE TABLE SKU CASCADE;
-        TRUNCATE TABLE Analysis_Date CASCADE;
-
-
--- TRUNCATE TABLE Analysis_Date CASCADE;
-
-        PERFORM import_from_tsv(
-                'personal_data',
-                path_dir || 'Personal_Data_Mini.tsv'
-            );
---
-        PERFORM import_from_tsv(
-                'cards',
-                path_dir || 'Cards_Mini.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'groups_sku',
-                path_dir || 'Groups_SKU_Mini.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'sku',
-                path_dir || 'SKU_Mini.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'stores',
-                path_dir || 'Stores_Mini.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'transactions',
-                path_dir || 'Transactions_Mini.tsv'
-            );
-
-        PERFORM import_from_tsv(
-                'checks',
-                path_dir || 'Checks_Mini.tsv'
-            );
-
-
-        PERFORM import_from_tsv(
-                'analysis_date',
-                path_dir || 'Date_Of_Analysis_Formation.tsv'
-            );
-
-    END
+        CALL import_from_tsv('personal_data', path_dir || 'Personal_Data_Mini.tsv');
+        CALL import_from_tsv('cards', path_dir || 'Cards_Mini.tsv');
+        CALL import_from_tsv('groups_sku', path_dir || 'Groups_SKU_Mini.tsv');
+        CALL import_from_tsv('sku', path_dir || 'SKU_Mini.tsv');
+        CALL import_from_tsv('stores', path_dir || 'Stores_Mini.tsv');
+        CALL import_from_tsv('transactions', path_dir || 'Transactions_Mini.tsv');
+        CALL import_from_tsv('checks', path_dir || 'Checks_Mini.tsv');
+        CALL import_from_tsv('analysis_date', path_dir || 'Date_Of_Analysis_Formation.tsv');
+    END;
+END;
 $$;
 
---
--- DO
--- $$
---     DECLARE
---         path_dir text;
---     BEGIN
---         path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
---         -- поменять на свой путь
---
---         -- Очищаем другие таблицы перед импортом
---         TRUNCATE TABLE personal_data CASCADE;
---         TRUNCATE TABLE Cards CASCADE;
---         TRUNCATE TABLE Stores CASCADE;
---         TRUNCATE TABLE Transactions CASCADE;
---         TRUNCATE TABLE Checks CASCADE;
---         TRUNCATE TABLE Groups_SKU CASCADE;
---         TRUNCATE TABLE SKU CASCADE;
---
--- -- TRUNCATE TABLE Analysis_Date CASCADE;
---
---         PERFORM export_to_tsv(
---                 'personal_data',
---                 path_dir || 'Personal_Data.tsv'
---             );
--- --
---         PERFORM export_to_tsv(
---                 'cards',
---                 path_dir || 'Cards.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'groups_sku',
---                 path_dir || 'Groups_SKU.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'sku',
---                 path_dir || 'SKU.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'stores',
---                 path_dir || 'Stores.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'transactions',
---                 path_dir || 'Transactions.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'checks',
---                 path_dir || 'Checks.tsv'
---             );
---
---         PERFORM export_to_tsv(
---                 'analysis_date',
---                 path_dir || 'Date_Of_Analysis_Formation.tsv'
---             );
---
---     END
--- $$;
+
+
+CALL import_datasets_mini();
+CALL import_datasets();
+
+
