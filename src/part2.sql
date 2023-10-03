@@ -2,7 +2,7 @@
 CREATE OR REPLACE VIEW Customers AS
 WITH Customer_Average_Check
          AS (SELECT pd.customer_id,
-                    ROUND(SUM(t.transaction_summ) / COUNT(t.transaction_id), 2) AS Customer_Average_Check
+                    SUM(t.transaction_summ) / COUNT(t.transaction_id) AS Customer_Average_Check
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -11,21 +11,21 @@ WITH Customer_Average_Check
 
      Customer_Frequency
          AS (SELECT pd.customer_id,
-                    ROUND((MAX(t.transaction_datetime)::date - MIN(t.transaction_datetime)::date)::numeric
-                              / COUNT(t.transaction_id), 2) AS Customer_Frequency
+                    (MAX(t.transaction_datetime)::date - MIN(t.transaction_datetime)::date)::numeric
+                        / COUNT(t.transaction_id) AS Customer_Frequency
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
-             WHERE t.transaction_datetime <= (SELECT max(analysis_formation) FROM analysis_date)
+             WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
              GROUP BY pd.customer_id
              ORDER BY Customer_Frequency),
 
      Churn_Probability
          AS (SELECT pd.customer_id,
-                    ROUND(EXTRACT(EPOCH FROM ((SELECT MAX(analysis_formation) FROM analysis_date)
-                        - MAX(t.transaction_datetime))) / 86400, 2)                          AS Customer_Inactive_Period,
-                    ROUND((EXTRACT(EPOCH FROM ((SELECT MAX(analysis_formation) FROM analysis_date)
-                        - MAX(t.transaction_datetime))) / 86400) / cf.Customer_Frequency, 2) AS Customer_Churn_Rate
+                    EXTRACT(EPOCH FROM ((SELECT MAX(analysis_formation) FROM analysis_date)
+                        - MAX(t.transaction_datetime))) / 86400                          AS Customer_Inactive_Period,
+                    (EXTRACT(EPOCH FROM ((SELECT MAX(analysis_formation) FROM analysis_date)
+                        - MAX(t.transaction_datetime))) / 86400) / cf.Customer_Frequency AS Customer_Churn_Rate
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -140,7 +140,8 @@ SELECT customer_id,
            ELSE 3 END
            AS Customer_Segment,
        Primary_Store
-FROM Customer_Unassignment;
+FROM Customer_Unassignment
+ORDER BY customer_id;
 
 ---------- Periods View ----------
 CREATE OR REPLACE VIEW Periods AS
@@ -158,10 +159,10 @@ WITH CommonData AS (SELECT pd.customer_id,
                     WHERE t.transaction_datetime <= (SELECT max(analysis_formation) FROM analysis_date)),
      GroupPurchaseInfo AS (SELECT customer_id,
                                   group_id,
-                                  MIN(transaction_datetime)         AS First_Group_Purchase_Date,
-                                  MAX(transaction_datetime)         AS Last_Group_Purchase_Date,
-                                  COUNT(*)                          AS Group_Purchase,
-                                  ROUND(MIN(Group_Min_Discount), 2) AS Group_Min_Discount
+                                  MIN(transaction_datetime) AS First_Group_Purchase_Date,
+                                  MAX(transaction_datetime) AS Last_Group_Purchase_Date,
+                                  COUNT(*)                  AS Group_Purchase,
+                                  MIN(Group_Min_Discount)   AS Group_Min_Discount
                            FROM CommonData
                            GROUP BY customer_id, group_id)
 
@@ -197,7 +198,7 @@ FROM personal_data pd
          JOIN public.sku s on ch.sku_id = s.sku_id
          JOIN public.groups_sku gs on s.group_id = gs.group_id
          JOIN stores st ON s.sku_id = st.sku_id AND st.transaction_store_id = t.transaction_store_id
-WHERE t.transaction_datetime <= (SELECT max(analysis_formation) FROM analysis_date)
+WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
 GROUP BY pd.customer_id, t.transaction_id, gs.group_id
 ORDER BY pd.customer_id;
 
@@ -239,8 +240,8 @@ WITH affinity_index_groups
          AS (SELECT ph.customer_id,
                     ph.group_id,
                     p.Group_Purchase,
-                    ROUND(COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric, 2) AS Group_Discount_Share,
-                    MIN(p.group_min_discount)                                               AS Group_Minimum_Discount
+                    COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric AS Group_Discount_Share,
+                    MIN(p.group_min_discount)                                     AS Group_Minimum_Discount
 --                     ROUND(ph.Group_Summ_Paid / ph.Group_Summ::numeric, 2)                   AS Group_Average_Discount
              FROM checks ch
                       JOIN public.sku s ON s.sku_id = ch.sku_id
@@ -263,12 +264,10 @@ WITH affinity_index_groups
                              gci.group_id,
                              CASE
                                  WHEN NULLIF(p.group_frequency, 0) IS NOT NULL THEN
-                                     ROUND(
-                                                     AVG(
-                                                     ABS(gci.interval - p.group_frequency) /
-                                                     NULLIF(p.group_frequency, 0)
-                                                 ) OVER (PARTITION BY gci.customer_id, gci.group_id), 2
-                                         )
+                                             AVG(
+                                             ABS(gci.interval - p.group_frequency) /
+                                             NULLIF(p.group_frequency, 0)
+                                         ) OVER (PARTITION BY gci.customer_id, gci.group_id)
                                  ELSE 0
                                  END AS group_stability_index
              FROM group_consumption_intervals gci
