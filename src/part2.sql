@@ -83,17 +83,17 @@ WITH Customer_Average_Check
                     ca.Customer_Average_Check,
                     CASE
                         WHEN RANK() OVER (ORDER BY Customer_Average_Check DESC) <=
-                             CEIL(0.1 * (SELECT COUNT(*) FROM Customer_Average_Check)) THEN 'High'
+                             FLOOR(0.1 * (SELECT COUNT(*) FROM Customer_Average_Check)) THEN 'High'
                         WHEN RANK() OVER (ORDER BY Customer_Average_Check DESC) <=
-                             CEIL(0.35 * (SELECT COUNT(*) FROM Customer_Average_Check)) THEN 'Medium'
+                             FLOOR(0.35 * (SELECT COUNT(*) FROM Customer_Average_Check)) THEN 'Medium'
                         ELSE 'Low'
                         END AS Customer_Average_Check_Segment,
                     cf.Customer_Frequency,
                     CASE
                         WHEN RANK() OVER (ORDER BY cf.Customer_Frequency) <=
-                             CEIL(0.1 * (SELECT COUNT(*) FROM Customer_Frequency)) THEN 'Often'
+                             0.1 * (SELECT COUNT(*) FROM Customer_Frequency) THEN 'Often'
                         WHEN RANK() OVER (ORDER BY cf.Customer_Frequency) <=
-                             CEIL(0.35 * (SELECT COUNT(*) FROM Customer_Frequency)) THEN 'Occasionally'
+                             0.35 * (SELECT COUNT(*) FROM Customer_Frequency) THEN 'Occasionally'
                         ELSE 'Rarely'
                         END
                             AS Customer_Frequency_Segment,
@@ -238,10 +238,10 @@ WITH affinity_index_groups
 
      discounts_for_groups
          AS (SELECT ph.customer_id,
-                    ph.group_id,
-                    p.Group_Purchase,
-                    COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric AS Group_Discount_Share,
-                    MIN(p.group_min_discount)                                     AS Group_Minimum_Discount
+                    ph.group_id
+--                     p.Group_Purchase
+--                     COUNT(DISTINCT ch.transaction_id) / p.Group_Purchase::numeric AS Group_Discount_Share,
+--                     MIN(p.group_min_discount)                                     AS Group_Minimum_Discount
 --                     ROUND(ph.Group_Summ_Paid / ph.Group_Summ::numeric, 2)                   AS Group_Average_Discount
              FROM checks ch
                       JOIN public.sku s ON s.sku_id = ch.sku_id
@@ -249,7 +249,7 @@ WITH affinity_index_groups
                  AND s.group_id = ph.group_id
                       JOIN Periods p on ph.customer_id = p.customer_id AND p.group_id = ph.group_id
              WHERE ch.SKU_Discount > 0 -- AND p.group_min_discount <> 0
-             GROUP BY ph.customer_id, ph.group_id, p.Group_Purchase
+             GROUP BY ph.customer_id, ph.group_id--, p.Group_Purchase
              ORDER BY ph.customer_id, ph.group_id),
 
      margin_for_customer AS (SELECT customer_id,
