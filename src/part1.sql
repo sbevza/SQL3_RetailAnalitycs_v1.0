@@ -83,6 +83,7 @@ CREATE OR REPLACE PROCEDURE import_from_csv(
     LANGUAGE plpgsql
 AS $$
 BEGIN
+    SET datestyle TO 'ISO, DMY';
     EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', table_name, filename, delimiter);
 END;
 $$;
@@ -130,6 +131,7 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
+--     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
@@ -160,7 +162,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
-    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+--     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
