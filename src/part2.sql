@@ -145,45 +145,49 @@ ORDER BY customer_id;
 
 ---------- Periods View ----------
 CREATE OR REPLACE VIEW Periods AS
-WITH CommonData AS (SELECT pd.customer_id,
-                           gs.group_id,
-                           t.transaction_id,
-                           t.transaction_datetime,
-                           ch.SKU_Discount / ch.SKU_Summ AS Group_Min_Discount
-                    FROM personal_data pd
-                             JOIN public.cards c ON pd.customer_id = c.customer_id
-                             JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
-                             JOIN public.checks ch ON t.transaction_id = ch.transaction_id
-                             JOIN public.sku s ON ch.sku_id = s.sku_id
-                             JOIN public.groups_sku gs ON s.group_id = gs.group_id
-                    WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)),
-     GroupPurchaseInfo AS (SELECT customer_id,
-                                  group_id,
-                                  MIN(transaction_datetime) AS First_Group_Purchase_Date,
-                                  MAX(transaction_datetime) AS Last_Group_Purchase_Date,
-                                  COUNT(*)                  AS Group_Purchase,
-                                  MIN(Group_Min_Discount)   AS Group_Min_Discount
-                           FROM CommonData
-                           GROUP BY customer_id, group_id)
+WITH CommonData
+         AS (SELECT pd.customer_id,
+                    gs.group_id,
+                    t.transaction_id,
+                    t.transaction_datetime,
+                    ch.SKU_Discount / ch.SKU_Summ AS Group_Min_Discount
+             FROM personal_data pd
+                      JOIN public.cards c ON pd.customer_id = c.customer_id
+                      JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
+                      JOIN public.checks ch ON t.transaction_id = ch.transaction_id
+                      JOIN public.sku s ON ch.sku_id = s.sku_id
+                      JOIN public.groups_sku gs ON s.group_id = gs.group_id
+             WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)),
+     GroupPurchaseInfo
+         AS (SELECT customer_id,
+                    group_id,
+                    MIN(transaction_datetime) AS First_Group_Purchase_Date,
+                    MAX(transaction_datetime) AS Last_Group_Purchase_Date,
+                    COUNT(*)                  AS Group_Purchase
+             FROM CommonData
+             GROUP BY customer_id, group_id),
 
--- SELECT *
--- FROM GroupPurchaseInfo
--- ORDER BY customer_id, group_id;
+     Min_Discount
+         AS (SELECT customer_id,
+                    group_id,
+                    MIN(Group_Min_Discount) AS Group_Min_Discount
+             FROM CommonData
+             WHERE Group_Min_Discount <> 0
+             GROUP BY customer_id, group_id)
 
 SELECT gd.customer_id,
        gd.group_id,
        gpi.First_Group_Purchase_Date,
        gpi.Last_Group_Purchase_Date,
        gpi.Group_Purchase,
-
-       (gpi.Last_Group_Purchase_Date::date - gpi.First_Group_Purchase_Date::date + 1) /
-       gpi.Group_Purchase::numeric AS Group_Frequency,
-
-       gpi.Group_Min_Discount
+       (EXTRACT(EPOCH FROM (gpi.Last_Group_Purchase_Date - gpi.First_Group_Purchase_Date)) + 86400) / 86400 /
+       gpi.Group_Purchase AS Group_Frequency,
+       COALESCE(md.Group_Min_Discount, 0) AS Group_Min_Discount
 FROM CommonData gd
-         JOIN GroupPurchaseInfo gpi ON gd.customer_id = gpi.customer_id AND gd.group_id = gpi.group_id
+         LEFT JOIN GroupPurchaseInfo gpi ON gd.customer_id = gpi.customer_id AND gd.group_id = gpi.group_id
+         LEFT JOIN Min_Discount md ON gd.customer_id = md.customer_id AND gd.group_id = md.group_id
 GROUP BY gd.customer_id, gd.group_id, gpi.First_Group_Purchase_Date, gpi.Last_Group_Purchase_Date,
-         gpi.Group_Purchase, gpi.Group_Min_Discount
+         gpi.Group_Purchase, COALESCE(md.Group_Min_Discount, 0)
 ORDER BY gd.customer_id, gd.group_id;
 
 
