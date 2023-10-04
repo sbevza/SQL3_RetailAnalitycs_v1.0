@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS Cards
 CREATE TABLE IF NOT EXISTS Groups_SKU
 (
     Group_ID   SERIAL PRIMARY KEY,
-    Group_Name varchar(255) CHECK (Group_Name ~ '^[A-Za-zА-Яа-я0-9\s\WёЁ]+$')
+    Group_Name VARCHAR CHECK (Group_Name ~ '^[A-Za-zА-Яа-я0-9\s\WёЁ]+$')
 );
 
 CREATE TABLE IF NOT EXISTS SKU -- Product grid Table (Товарная матрица)
@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS Stores
 (
     Transaction_Store_ID INT,
     SKU_ID               INT,
-    SKU_Purchase_Price   DECIMAL(10, 2),
-    SKU_Retail_Price     DECIMAL(10, 2),
+    SKU_Purchase_Price   DECIMAL,
+    SKU_Retail_Price     DECIMAL,
     FOREIGN KEY (SKU_ID) REFERENCES SKU (SKU_ID)
 );
 
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS Transactions
 (
     Transaction_ID       SERIAL PRIMARY KEY,
     Customer_Card_ID     INT,
-    Transaction_Summ     DECIMAL(10, 2),
+    Transaction_Summ     DECIMAL,
     Transaction_DateTime TIMESTAMP,
     Transaction_Store_ID INT,
     FOREIGN KEY (Customer_Card_ID) REFERENCES Cards (Customer_Card_ID)
@@ -59,10 +59,10 @@ CREATE TABLE IF NOT EXISTS Checks
 (
     Transaction_ID INT,
     SKU_ID         INT,
-    SKU_Amount     DECIMAL(10, 2),
-    SKU_Summ       DECIMAL(10, 2),
-    SKU_Summ_Paid  DECIMAL(10, 2),
-    SKU_Discount   DECIMAL(10, 2),
+    SKU_Amount     DECIMAL,
+    SKU_Summ       DECIMAL,
+    SKU_Summ_Paid  DECIMAL,
+    SKU_Discount   DECIMAL,
     FOREIGN KEY (Transaction_ID) REFERENCES Transactions (Transaction_ID),
     FOREIGN KEY (SKU_ID) REFERENCES SKU (SKU_ID)
 );
@@ -76,9 +76,9 @@ CREATE TABLE IF NOT EXISTS Analysis_Date
 
 -- Процедура импорта данных в таблицу
 CREATE OR REPLACE PROCEDURE import_from_csv(
-    IN table_name text,
-    IN filename text,
-    IN delimiter text
+    IN table_name TEXT,
+    IN filename TEXT,
+    IN delimiter TEXT
 )
     LANGUAGE plpgsql
 AS $$
@@ -131,8 +131,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
---     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
-    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+--     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
@@ -162,8 +162,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
---     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
-    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+--     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
@@ -207,8 +207,6 @@ BEGIN
     END;
 END;
 $$;
-
-
 
 
 CALL import_datasets_mini();
