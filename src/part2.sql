@@ -181,7 +181,7 @@ SELECT gd.customer_id,
        gpi.Last_Group_Purchase_Date,
        gpi.Group_Purchase,
        (EXTRACT(EPOCH FROM (gpi.Last_Group_Purchase_Date - gpi.First_Group_Purchase_Date)) + 86400) / 86400 /
-       gpi.Group_Purchase AS Group_Frequency,
+       gpi.Group_Purchase                 AS Group_Frequency,
        COALESCE(md.Group_Min_Discount, 0) AS Group_Min_Discount
 FROM CommonData gd
          LEFT JOIN GroupPurchaseInfo gpi ON gd.customer_id = gpi.customer_id AND gd.group_id = gpi.group_id
@@ -228,22 +228,41 @@ WITH affinity_index_groups
                     ph.group_id,
                     CASE
                         WHEN AVG(p.Group_Frequency) = 0 THEN 0
-                        ELSE ((SELECT MAX(analysis_formation) FROM analysis_date)::date
-                            - MAX(ph.Transaction_DateTime)::date) / AVG(p.Group_Frequency)
+                        ELSE
+                                EXTRACT(EPOCH FROM (SELECT MAX(analysis_formation) FROM analysis_date)
+                                    - MAX(ph.Transaction_DateTime)) / 86400
+                                / AVG(p.Group_Frequency)
                         END AS Group_Churn_Rate
              FROM Purchase_history ph
-                      JOIN Periods p ON p.customer_id = ph.customer_id
+                      LEFT JOIN Periods p ON p.customer_id = ph.customer_id AND p.group_id = ph.group_id
              GROUP BY ph.customer_id, ph.group_id),
 
      group_consumption_intervals AS (SELECT ph.customer_id,
                                             ph.transaction_id,
                                             ph.group_id,
                                             ph.transaction_datetime,
-                                            EXTRACT(DAY FROM (transaction_datetime - LAG(transaction_datetime)
-                                                                                     OVER (PARTITION BY ph.customer_id, ph.group_id
-                                                                                         ORDER BY transaction_datetime))) AS interval
+                                            (EXTRACT(EPOCH FROM (transaction_datetime - LAG(transaction_datetime)
+                                                                                        OVER (PARTITION BY ph.customer_id, ph.group_id
+                                                                                            ORDER BY transaction_datetime)))) /
+                                            86400 AS interval
                                      FROM purchase_history ph
                                      ORDER BY customer_id, group_id),
+
+     stability_index_group
+         AS (SELECT DISTINCT gci.customer_id,
+                             gci.group_id,
+                             CASE
+                                 WHEN NULLIF(p.group_frequency, 0) IS NOT NULL THEN
+                                             AVG(
+                                             ABS(gci.interval - p.group_frequency) /
+                                             NULLIF(p.group_frequency, 0)
+                                         ) OVER (PARTITION BY gci.customer_id, gci.group_id)
+                                 ELSE 0
+                                 END AS group_stability_index
+             FROM group_consumption_intervals gci
+                      LEFT JOIN periods p ON p.customer_id = gci.customer_id AND gci.group_id = p.group_id
+             GROUP BY gci.customer_id, gci.group_id, p.group_frequency, gci.interval
+             ORDER BY customer_id, group_id),
 
      discounts_for_groups
          AS (SELECT ph.customer_id,
@@ -274,31 +293,15 @@ WITH affinity_index_groups
                     SUM(group_summ_paid - group_cost)::numeric AS group_margin
              FROM purchase_history
              GROUP BY customer_id, group_id
-             ORDER BY customer_id, group_id),
-
-     stability_index_group
-         AS (SELECT DISTINCT gci.customer_id,
-                             gci.group_id,
-                             CASE
-                                 WHEN NULLIF(p.group_frequency, 0) IS NOT NULL THEN
-                                             AVG(
-                                             ABS(gci.interval - p.group_frequency) /
-                                             NULLIF(p.group_frequency, 0)
-                                         ) OVER (PARTITION BY gci.customer_id, gci.group_id)
-                                 ELSE 0
-                                 END AS group_stability_index
-             FROM group_consumption_intervals gci
-                      JOIN periods p ON p.customer_id = gci.customer_id AND gci.group_id = p.group_id
-             GROUP BY gci.customer_id, gci.group_id, p.group_frequency, gci.interval
              ORDER BY customer_id, group_id)
 
 SELECT aig.customer_id,
        aig.group_id,
        aig.group_affinity_index,
        cig.Group_Churn_Rate,
-       sig.group_stability_index,
+       COALESCE(sig.group_stability_index, 0) AS group_stability_index,
        mfc.group_margin,
-       dfg.Group_Discount_Share,
+       COALESCE(dfg.Group_Discount_Share, 0)  AS Group_Discount_Share,
        dfg.Group_Minimum_Discount,
        ad.Group_Average_Discount
 FROM affinity_index_groups aig
@@ -310,24 +313,9 @@ FROM affinity_index_groups aig
 ;
 
 
-SELECT pd.customer_id,
-       MAX(t.transaction_datetime) - MIN(t.transaction_datetime),
-       COUNT(t.transaction_id)::decimal AS Customer_Frequency
-FROM personal_data pd
-         JOIN public.cards c ON pd.customer_id = c.customer_id
-         JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
-WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
-GROUP BY pd.customer_id
-ORDER BY Customer_Frequency;
 
 EXPLAIN ANALYSE
 SELECT *
 FROM public.groups
 ;
 
-SELECT ch.transaction_id,
-       s.group_id,
-       ch.sku_discount / ch.sku_summ
-FROM checks ch
-         LEFT JOIN public.sku s on s.sku_id = ch.sku_id
-;
