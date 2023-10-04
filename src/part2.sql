@@ -2,20 +2,20 @@
 CREATE OR REPLACE VIEW Customers AS
 WITH Customer_Average_Check
          AS (SELECT pd.customer_id,
-                    SUM(t.transaction_summ) / COUNT(t.transaction_id) AS Customer_Average_Check
+                    SUM(t.transaction_summ) / COUNT(t.transaction_id)::numeric AS Customer_Average_Check
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
-                      JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
-             GROUP BY pd.customer_id
-             ORDER BY Customer_Average_Check DESC),
+                      LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
+             WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
+             GROUP BY pd.customer_id),
 
      Customer_Frequency
          AS (SELECT pd.customer_id,
-                    (MAX(t.transaction_datetime)::date - MIN(t.transaction_datetime)::date)::numeric
-                        / COUNT(t.transaction_id) AS Customer_Frequency
+                    EXTRACT(EPOCH FROM (MAX(t.transaction_datetime) - MIN(t.transaction_datetime))) / 86400
+                        / COUNT(t.transaction_id)::decimal AS Customer_Frequency
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
-                      JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
+                      LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
              WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
              GROUP BY pd.customer_id
              ORDER BY Customer_Frequency),
@@ -60,7 +60,7 @@ WITH Customer_Average_Check
                           OVER (PARTITION BY pd.customer_id ORDER BY t.transaction_datetime DESC) AS rn
                    FROM personal_data pd
                             JOIN public.cards c ON pd.customer_id = c.customer_id
-                            JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
+                            LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
                    WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)) s
              WHERE rn <= 3),
 
@@ -106,9 +106,9 @@ WITH Customer_Average_Check
                         END AS Customer_Churn_Segment,
                     ps.primary_store
              FROM Customer_Average_Check ca
-                      JOIN Customer_Frequency cf ON ca.customer_id = cf.customer_id
-                      JOIN Churn_Probability cp ON cp.customer_id = ca.customer_id
-                      JOIN Primary_Store ps ON ca.customer_id = ps.customer_id
+                      LEFT JOIN Customer_Frequency cf ON ca.customer_id = cf.customer_id
+                      LEFT JOIN Churn_Probability cp ON cp.customer_id = ca.customer_id
+                      LEFT JOIN Primary_Store ps ON ca.customer_id = ps.customer_id
              GROUP BY ca.customer_id,
                       ca.Customer_Average_Check,
                       cf.Customer_Frequency,
@@ -156,7 +156,7 @@ WITH CommonData AS (SELECT pd.customer_id,
                              JOIN public.checks ch ON t.transaction_id = ch.transaction_id
                              JOIN public.sku s ON ch.sku_id = s.sku_id
                              JOIN public.groups_sku gs ON s.group_id = gs.group_id
-                    WHERE t.transaction_datetime <= (SELECT max(analysis_formation) FROM analysis_date)),
+                    WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)),
      GroupPurchaseInfo AS (SELECT customer_id,
                                   group_id,
                                   MIN(transaction_datetime) AS First_Group_Purchase_Date,
@@ -166,13 +166,19 @@ WITH CommonData AS (SELECT pd.customer_id,
                            FROM CommonData
                            GROUP BY customer_id, group_id)
 
+-- SELECT *
+-- FROM GroupPurchaseInfo
+-- ORDER BY customer_id, group_id;
+
 SELECT gd.customer_id,
        gd.group_id,
        gpi.First_Group_Purchase_Date,
        gpi.Last_Group_Purchase_Date,
        gpi.Group_Purchase,
+
        (gpi.Last_Group_Purchase_Date::date - gpi.First_Group_Purchase_Date::date + 1) /
-       gpi.Group_Purchase AS Group_Frequency,
+       gpi.Group_Purchase::numeric AS Group_Frequency,
+
        gpi.Group_Min_Discount
 FROM CommonData gd
          JOIN GroupPurchaseInfo gpi ON gd.customer_id = gpi.customer_id AND gd.group_id = gpi.group_id
@@ -292,9 +298,32 @@ SELECT aig.customer_id,
        dfg.Group_Minimum_Discount,
        ad.Group_Average_Discount
 FROM affinity_index_groups aig
-         JOIN churn_index_groups cig ON aig.customer_id = cig.customer_id AND aig.group_id = cig.group_id
-         JOIN stability_index_group sig ON aig.customer_id = sig.customer_id AND aig.group_id = sig.group_id
-         JOIN discounts_for_groups dfg ON aig.customer_id = dfg.customer_id AND aig.group_id = dfg.group_id
-         JOIN margin_for_customer mfc ON aig.customer_id = mfc.customer_id AND aig.group_id = mfc.group_id
-         JOIN average_discount ad ON aig.customer_id = ad.customer_id AND aig.group_id = ad.group_id
+         LEFT JOIN churn_index_groups cig ON aig.customer_id = cig.customer_id AND aig.group_id = cig.group_id
+         LEFT JOIN stability_index_group sig ON aig.customer_id = sig.customer_id AND aig.group_id = sig.group_id
+         LEFT JOIN discounts_for_groups dfg ON aig.customer_id = dfg.customer_id AND aig.group_id = dfg.group_id
+         LEFT JOIN margin_for_customer mfc ON aig.customer_id = mfc.customer_id AND aig.group_id = mfc.group_id
+         LEFT JOIN average_discount ad ON aig.customer_id = ad.customer_id AND aig.group_id = ad.group_id
+;
+
+
+SELECT pd.customer_id,
+       MAX(t.transaction_datetime) - MIN(t.transaction_datetime),
+       COUNT(t.transaction_id)::decimal AS Customer_Frequency
+FROM personal_data pd
+         JOIN public.cards c ON pd.customer_id = c.customer_id
+         JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
+WHERE t.transaction_datetime <= (SELECT MAX(analysis_formation) FROM analysis_date)
+GROUP BY pd.customer_id
+ORDER BY Customer_Frequency;
+
+EXPLAIN ANALYSE
+SELECT *
+FROM public.groups
+;
+
+SELECT ch.transaction_id,
+       s.group_id,
+       ch.sku_discount / ch.sku_summ
+FROM checks ch
+         LEFT JOIN public.sku s on s.sku_id = ch.sku_id
 ;
