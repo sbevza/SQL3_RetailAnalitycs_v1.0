@@ -144,6 +144,7 @@ FROM Customer_Unassignment
 ORDER BY customer_id;
 
 ---------- Periods View ----------
+
 CREATE OR REPLACE VIEW Periods AS
 WITH CommonData
          AS (SELECT pd.customer_id,
@@ -213,13 +214,6 @@ GROUP BY pd.customer_id, t.transaction_id, gs.group_id
 ORDER BY pd.customer_id;
 
 ---------- Groups View ----------
- 
--- Выбрать метод расчета актуальной маржи
-SET margin.type = 1;  -- 0 - по умолчанию, 1 - по количеству дней, 2 - по количеству транзакций
-SET margin.arg = '100'; -- количество дней или количество транзакций
--- SHOW margin.type;
-SHOW margin.arg;
-
 
 CREATE OR REPLACE VIEW Groups AS
 WITH affinity_index_groups
@@ -315,38 +309,10 @@ WITH affinity_index_groups
              WHERE transaction_rank <= (current_setting('margin.arg'))::integer -- Получить три самые поздние транзакции для каждой группы
              GROUP BY customer_id, group_id
              ORDER BY customer_id, group_id),
--- Вариант без SET			 
+-- Вариант по всем транзам
 	    margin_for_customer
-         AS (SELECT customer_id,
-                    group_id,
-                    SUM(group_summ_paid - group_cost)::numeric AS group_margin
-             FROM purchase_history
-             GROUP BY customer_id, group_id
-             ORDER BY customer_id, group_id)
+         AS (SELECT * from calculate_average_margin(0))
 
--- Вариант с SET. Вывод совпадает везде, кроме одно строки (что странно)
---      margin_for_customer
---          AS (SELECT ph.customer_id, 
--- 			        ph.group_id,
--- 			        CASE
--- 			            WHEN current_setting('margin.type')::integer = 1 THEN
---                              SUM(ph.group_summ_paid - ph.group_cost)
--- 			                 FILTER (WHERE ph.transaction_datetime >= (
---                                      SELECT MAX(analysis_formation) - (current_setting('margin.arg')::integer || ' days')::interval 
---                                      FROM analysis_date)
---                                      AND ph.group_id = p.group_id)
---                         WHEN current_setting('margin.type')::integer = 2 THEN
--- 			                 (SELECT tlt.total_group_diff
--- 							 FROM three_last_transactions tlt
--- 			                 WHERE ph.group_id = tlt.group_id AND ph.customer_id = tlt.customer_id)
--- 			            ELSE
---                             SUM(group_summ_paid - group_cost) 
--- 			        END AS group_margin
--- 			 FROM purchase_history ph
--- 			 LEFT JOIN periods p ON ph.customer_id = p.customer_id
---              GROUP BY ph.customer_id, ph.group_id
---              ORDER BY ph.customer_id, ph.group_id)
-			 
 SELECT aig.customer_id,
        aig.group_id,
        aig.group_affinity_index,
@@ -371,47 +337,3 @@ SELECT *
 FROM public.groups
 ;
 
-
--- В этом варианте SET работает, а когда переношу в VIEW, перестает распознавать переменные
--- WITH ranked_transactions 
--- 	     AS (SELECT customer_id,
---                     transaction_id,
---                     transaction_datetime,
---                     group_id,
---                     group_summ_paid,
---                     group_cost,
---                    (group_summ_paid - group_cost) AS group_diff,
---                     ROW_NUMBER() OVER (PARTITION BY customer_id, group_id ORDER BY transaction_datetime DESC) AS transaction_rank
---              FROM purchase_history
---              ORDER BY customer_id, group_id, transaction_datetime DESC),
-
---      three_last_transactions
---          AS (SELECT customer_id,
---                     group_id,
---                     SUM(group_diff) AS total_group_diff
---              FROM ranked_transactions
---              WHERE transaction_rank <= (current_setting('margin.arg'))::integer -- Получить три самые поздние транзакции для каждой группы
---              GROUP BY customer_id, group_id
---              ORDER BY customer_id, group_id)
-
---      (SELECT ph.customer_id, 
--- 			        ph.group_id,
--- 			        CASE
--- 			            WHEN current_setting('margin.type')::integer = 1 THEN
---                              SUM(ph.group_summ_paid - ph.group_cost)
--- 			                 FILTER (WHERE ph.transaction_datetime >= (
---                                      SELECT MAX(analysis_formation) - (current_setting('margin.arg') || ' days')::interval 
---                                      FROM analysis_date)
---                                      AND ph.group_id = p.group_id)
---                         WHEN current_setting('margin.type')::integer = 2 THEN
--- 			                 (SELECT tlt.total_group_diff
--- 							 FROM three_last_transactions tlt
--- 			                 WHERE ph.group_id = tlt.group_id AND ph.customer_id = tlt.customer_id)
--- 			            ELSE
---                             SUM(group_summ_paid - group_cost) 
--- 			        END AS group_margin
--- 			 FROM purchase_history ph
--- 			 LEFT JOIN periods p ON ph.customer_id = p.customer_id
---              GROUP BY ph.customer_id, ph.group_id
---              ORDER BY ph.customer_id, ph.group_id)
-			 
