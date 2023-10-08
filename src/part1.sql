@@ -1,8 +1,8 @@
 -- Создаем базу данных
-CREATE DATABASE school21;
+-- CREATE DATABASE school21;
 
 -- Подключаемся к базе данных
-\c school21
+-- \c school21
 
 -- Создаем таблицу Peers
 CREATE TABLE IF NOT EXISTS Personal_Data
@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS Stores
 (
     Transaction_Store_ID INT,
     SKU_ID               INT,
-    SKU_Purchase_Price   DECIMAL,
-    SKU_Retail_Price     DECIMAL,
+    SKU_Purchase_Price   NUMERIC,
+    SKU_Retail_Price     NUMERIC,
     FOREIGN KEY (SKU_ID) REFERENCES SKU (SKU_ID)
 );
 
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS Transactions
 (
     Transaction_ID       SERIAL PRIMARY KEY,
     Customer_Card_ID     INT,
-    Transaction_Summ     DECIMAL,
+    Transaction_Summ     NUMERIC,
     Transaction_DateTime TIMESTAMP,
     Transaction_Store_ID INT,
     FOREIGN KEY (Customer_Card_ID) REFERENCES Cards (Customer_Card_ID)
@@ -59,10 +59,10 @@ CREATE TABLE IF NOT EXISTS Checks
 (
     Transaction_ID INT,
     SKU_ID         INT,
-    SKU_Amount     DECIMAL,
-    SKU_Summ       DECIMAL,
-    SKU_Summ_Paid  DECIMAL,
-    SKU_Discount   DECIMAL,
+    SKU_Amount     NUMERIC,
+    SKU_Summ       NUMERIC,
+    SKU_Summ_Paid  NUMERIC,
+    SKU_Discount   NUMERIC,
     FOREIGN KEY (Transaction_ID) REFERENCES Transactions (Transaction_ID),
     FOREIGN KEY (SKU_ID) REFERENCES SKU (SKU_ID)
 );
@@ -131,8 +131,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
-    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
---     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
+--     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
@@ -162,9 +162,8 @@ AS $$
 DECLARE
     path_dir text;
 BEGIN
-    path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
---     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
-
+--     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
     TRUNCATE TABLE groups_sku CASCADE;
@@ -209,8 +208,9 @@ END;
 $$;
 
 
+
 CALL import_datasets_mini();
-CALL import_datasets();
-CALL export_datasets_mini();
+-- CALL import_datasets();
+-- CALL export_datasets_mini();
 
 

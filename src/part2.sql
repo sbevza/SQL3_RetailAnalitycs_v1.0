@@ -1,4 +1,65 @@
+CREATE OR REPLACE FUNCTION calculate_average_margin(
+    p_mode INT,
+    p_period_days INT DEFAULT 0,
+    p_transactions_count INT DEFAULT 0,
+    start_date DATE DEFAULT NULL,
+    end_date DATE DEFAULT NULL
+)
+    RETURNS TABLE
+            (
+                customer_id  INT,
+                group_id     INT,
+                group_margin numeric
+            )
+AS
+$$
+BEGIN
+    CASE
+        WHEN p_mode = 0 THEN -- Режим 0: Выборка по всем данным
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             SUM(group_summ_paid - group_cost) AS group_margin
+                      FROM purchase_history ph
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY ph.customer_id, ph.group_id);
+
+        WHEN p_mode = 1 THEN -- Режим 1: Выборка за последние p_period_days дней
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             SUM(group_summ_paid - group_cost) AS group_margin
+                      FROM purchase_history ph,
+                           analysis_date ad
+                      WHERE transaction_datetime <= ad.analysis_formation - INTERVAL '1 day' * p_period_days
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY ph.customer_id, ph.group_id);
+
+        WHEN p_mode = 2 THEN -- Режим 2: Выборка последних p_transactions_count транзакций
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             SUM(group_summ_paid - group_cost) AS group_margin
+                      FROM purchase_history ph
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY MAX(transaction_id) DESC
+                      LIMIT p_transactions_count);
+
+        WHEN p_mode = 3 THEN -- Режим 3: Выборка за период с start_date по end_date
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             SUM(group_summ_paid - group_cost) AS group_margin
+                      FROM purchase_history ph
+                      WHERE transaction_datetime BETWEEN start_date AND end_date
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY ph.customer_id, ph.group_id);
+
+        ELSE -- Неизвестный режим, вернуть NULL или другое значение по умолчанию
+        RETURN QUERY (SELECT NULL::INT, NULL::INT, NULL::numeric);
+        END CASE;
+
+END;
+$$ LANGUAGE plpgsql;
+
 ---------- Customers View ----------
+
 CREATE OR REPLACE VIEW Customers AS
 WITH Customer_Average_Check
          AS (SELECT pd.customer_id,
@@ -12,7 +73,7 @@ WITH Customer_Average_Check
      Customer_Frequency
          AS (SELECT pd.customer_id,
                     EXTRACT(EPOCH FROM (MAX(t.transaction_datetime) - MIN(t.transaction_datetime))) / 86400
-                        / COUNT(t.transaction_id)::decimal AS Customer_Frequency
+                        / COUNT(t.transaction_id)::numeric AS Customer_Frequency
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -289,26 +350,7 @@ WITH affinity_index_groups
              WHERE Group_Summ_Paid <> Group_Summ
              GROUP BY customer_id, group_id),
 
-     ranked_transactions 
-	     AS (SELECT customer_id,
-                    transaction_id,
-                    transaction_datetime,
-                    group_id,
-                    group_summ_paid,
-                    group_cost,
-                   (group_summ_paid - group_cost) AS group_diff,
-                    ROW_NUMBER() OVER (PARTITION BY customer_id, group_id ORDER BY transaction_datetime DESC) AS transaction_rank
-             FROM purchase_history
-             ORDER BY customer_id, group_id, transaction_datetime DESC),
 
-     three_last_transactions
-         AS (SELECT customer_id,
-                    group_id,
-                    SUM(group_diff) AS total_group_diff
-             FROM ranked_transactions
-             WHERE transaction_rank <= (current_setting('margin.arg'))::integer -- Получить три самые поздние транзакции для каждой группы
-             GROUP BY customer_id, group_id
-             ORDER BY customer_id, group_id),
 -- Вариант по всем транзам
 	    margin_for_customer
          AS (SELECT * from calculate_average_margin(0))
@@ -332,8 +374,26 @@ FROM affinity_index_groups aig
 
 
 
-EXPLAIN ANALYSE
-SELECT *
-FROM public.groups
-;
+
+-- -- Выборка всех данных
+-- SELECT *
+-- FROM calculate_average_margin(0);
+--
+-- -- Выборка данных за последние 7 дней
+-- SELECT *
+-- FROM calculate_average_margin(1, 100);
+--
+-- -- Выборка последних 10 транзакций
+-- SELECT *
+-- FROM calculate_average_margin(2, 0, 100);
+--
+-- -- Выборка данных за период с 2023-01-01 по 2023-02-01
+-- SELECT *
+-- FROM calculate_average_margin(3, 0, 0, '2021-07-01', '2023-02-01');
+--
+--
+-- EXPLAIN ANALYSE
+-- SELECT *
+-- FROM public.groups
+-- ;
 
