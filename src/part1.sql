@@ -1,7 +1,7 @@
 -- Создаем базу данных
 -- CREATE DATABASE school21;
-
--- Подключаемся к базе данных
+--
+-- -- Подключаемся к базе данных
 -- \c school21
 
 -- Создаем таблицу Peers
@@ -81,7 +81,8 @@ CREATE OR REPLACE PROCEDURE import_from_csv(
     IN delimiter TEXT
 )
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 BEGIN
     SET datestyle TO 'ISO, DMY';
     EXECUTE format('COPY %I FROM %L WITH CSV DELIMITER %L', table_name, filename, delimiter);
@@ -93,9 +94,10 @@ CREATE OR REPLACE PROCEDURE import_from_tsv(
     IN filename text
 )
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 BEGIN
-    CALL import_from_csv(table_name, filename , E'\t');
+    CALL import_from_csv(table_name, filename, E'\t');
 END;
 $$;
 
@@ -106,7 +108,8 @@ CREATE OR REPLACE PROCEDURE export_to_csv(
     IN delimiter text
 )
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 BEGIN
     EXECUTE format('COPY %I TO %L WITH CSV DELIMITER %L', table_name, filename, delimiter);
 END;
@@ -117,9 +120,10 @@ CREATE OR REPLACE PROCEDURE export_to_tsv(
     IN filename text
 )
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 BEGIN
-    CALL export_to_csv(table_name, filename , E'\t');
+    CALL export_to_csv(table_name, filename, E'\t');
 END;
 $$;
 
@@ -127,11 +131,12 @@ $$;
 
 CREATE OR REPLACE PROCEDURE import_datasets()
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 DECLARE
     path_dir text;
 BEGIN
---     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    --     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-1/datasets/';
 
     TRUNCATE TABLE personal_data CASCADE;
@@ -158,11 +163,12 @@ $$;
 
 CREATE OR REPLACE PROCEDURE import_datasets_mini()
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 DECLARE
     path_dir text;
 BEGIN
---     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
+    --     path_dir := '/mnt/c/Users/sbevz/Documents/git/SQL3_RetailAnalitycs_v1.0-2/datasets/';
     path_dir := '/Users/amazomic/SQL3_RetailAnalitycs_v1.0-2/datasets/';
     TRUNCATE TABLE personal_data CASCADE;
     TRUNCATE TABLE cards CASCADE;
@@ -189,7 +195,8 @@ $$;
 
 CREATE OR REPLACE PROCEDURE export_datasets_mini()
     LANGUAGE plpgsql
-AS $$
+AS
+$$
 DECLARE
     path_dir text;
 BEGIN
@@ -210,7 +217,7 @@ $$;
 
 
 CALL import_datasets_mini();
--- CALL import_datasets();
+CALL import_datasets();
 -- CALL export_datasets_mini();
 
 

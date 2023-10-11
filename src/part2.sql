@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION calculate_average_margin(
             (
                 customer_id  INT,
                 group_id     INT,
-                group_margin numeric
+                group_margin NUMERIC
             )
 AS
 $$
@@ -27,20 +27,21 @@ BEGIN
         RETURN QUERY (SELECT ph.customer_id,
                              ph.group_id,
                              SUM(group_summ_paid - group_cost) AS group_margin
-                      FROM purchase_history ph,
-                           analysis_date ad
-                      WHERE transaction_datetime <= ad.analysis_formation - INTERVAL '1 day' * p_period_days
+                      FROM purchase_history ph
+                               JOIN analysis_date ad ON ph.transaction_datetime >=
+                                                        ad.analysis_formation - INTERVAL '1 day' * p_period_days
                       GROUP BY ph.customer_id, ph.group_id
                       ORDER BY ph.customer_id, ph.group_id);
 
         WHEN p_mode = 2 THEN -- Режим 2: Выборка последних p_transactions_count транзакций
         RETURN QUERY (SELECT ph.customer_id,
                              ph.group_id,
-                             SUM(group_summ_paid - group_cost) AS group_margin
+                             SUM(ph.group_summ_paid - ph.group_cost) AS group_margin
                       FROM purchase_history ph
+                               JOIN transactions t ON t.transaction_id = ph.transaction_id
+                      WHERE t.transaction_id >= (SELECT MAX(transaction_id) - p_transactions_count FROM transactions)
                       GROUP BY ph.customer_id, ph.group_id
-                      ORDER BY MAX(transaction_id) DESC
-                      LIMIT p_transactions_count);
+                      ORDER BY MAX(t.transaction_id) DESC);
 
         WHEN p_mode = 3 THEN -- Режим 3: Выборка за период с start_date по end_date
         RETURN QUERY (SELECT ph.customer_id,
@@ -50,9 +51,16 @@ BEGIN
                       WHERE transaction_datetime BETWEEN start_date AND end_date
                       GROUP BY ph.customer_id, ph.group_id
                       ORDER BY ph.customer_id, ph.group_id);
+        WHEN p_mode = 4 THEN -- Режим 3: Выборка за период с start_date по end_date
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             AVG((ph.Group_Summ_Paid - ph.group_cost)/(ph.Group_Summ_Paid/100)) AS group_margin
+                      FROM purchase_history ph
+                               JOIN transactions t ON t.transaction_id = ph.transaction_id
+                      WHERE t.transaction_id >= (SELECT MAX(transaction_id) - 100 FROM transactions)
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY MAX(t.transaction_id) DESC);
 
-        ELSE -- Неизвестный режим, вернуть NULL или другое значение по умолчанию
-        RETURN QUERY (SELECT NULL::INT, NULL::INT, NULL::numeric);
         END CASE;
 
 END;
@@ -63,7 +71,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE VIEW Customers AS
 WITH Customer_Average_Check
          AS (SELECT pd.customer_id,
-                    SUM(t.transaction_summ) / COUNT(t.transaction_id)::numeric AS Customer_Average_Check
+                    SUM(t.transaction_summ) / COUNT(t.transaction_id) AS Customer_Average_Check
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -73,7 +81,7 @@ WITH Customer_Average_Check
      Customer_Frequency
          AS (SELECT pd.customer_id,
                     EXTRACT(EPOCH FROM (MAX(t.transaction_datetime) - MIN(t.transaction_datetime))) / 86400
-                        / COUNT(t.transaction_id)::numeric AS Customer_Frequency
+                        / COUNT(t.transaction_id) AS Customer_Frequency
              FROM personal_data pd
                       JOIN public.cards c ON pd.customer_id = c.customer_id
                       LEFT JOIN public.transactions t ON c.customer_card_id = t.customer_card_id
@@ -352,7 +360,7 @@ WITH affinity_index_groups
 
 
 -- Вариант по всем транзам
-	    margin_for_customer
+     margin_for_customer
          AS (SELECT * from calculate_average_margin(0))
 
 SELECT aig.customer_id,
@@ -360,7 +368,7 @@ SELECT aig.customer_id,
        aig.group_affinity_index,
        cig.Group_Churn_Rate,
        COALESCE(sig.group_stability_index, 0) AS group_stability_index,
-       mfc.group_margin AS group_margin,
+       mfc.group_margin                       AS group_margin,
        COALESCE(dfg.Group_Discount_Share, 0)  AS Group_Discount_Share,
        dfg.Group_Minimum_Discount,
        ad.Group_Average_Discount
@@ -374,18 +382,17 @@ FROM affinity_index_groups aig
 
 
 
-
 -- -- Выборка всех данных
 -- SELECT *
 -- FROM calculate_average_margin(0);
 --
--- -- Выборка данных за последние 7 дней
--- SELECT *
--- FROM calculate_average_margin(1, 100);
---
--- -- Выборка последних 10 транзакций
--- SELECT *
--- FROM calculate_average_margin(2, 0, 100);
+-- Выборка данных за последние 100 дней
+SELECT *
+FROM calculate_average_margin(1, 100);
+
+-- -- Выборка последних 100 транзакций
+SELECT *
+FROM calculate_average_margin(2, 0, 100);
 --
 -- -- Выборка данных за период с 2023-01-01 по 2023-02-01
 -- SELECT *
