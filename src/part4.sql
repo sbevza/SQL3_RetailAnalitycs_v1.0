@@ -107,51 +107,65 @@ FROM form_offer_for_average_check(
 
 -- формирование предложения
 SELECT c.customer_id,
-       SUM(t.transaction_summ) / COUNT(t.transaction_id) * 1.15 AS "целевой чек",
+       round(SUM(t.transaction_summ) / COUNT(t.transaction_id) * 1.15, 2) AS "целевой чек",
        g.group_id,
-       0.3 *  (SELECT group_margin FROM calculate_average_margin(2, 0, 100)
-               WHERE customer_id = c.customer_id AND group_id = g.group_id) as p5,
-       CEIL(g.group_minimum_discount * 1.05 / 0.5) * 5 as p6,
+       gs.group_name,
+       (SELECT group_margin
+        FROM calculate_average_margin(4, 0, 0)
+        WHERE customer_id = c.customer_id
+          AND group_id = g.group_id) * 0.3                                as p5,
+       ceil(g.group_minimum_discount / 0.05) * 5                          as p6,
+       g.group_minimum_discount,
        p.group_frequency,
        g.group_churn_rate,
-       g.group_discount_share,
-       g.group_minimum_discount
-
+       g.group_discount_share
 FROM cards c
-         join groups_sku gs on gs.group_id = group_id
-         join checks on customer_id = c.customer_id
-         JOIN transactions t ON t.customer_card_id = c.customer_card_id
-
-         JOIN groups g ON c.customer_id = g.customer_id AND g.group_id = gs.group_id
+         left join groups_sku gs on gs.group_id = group_id
+         left join checks on customer_id = c.customer_id
+         left JOIN transactions t ON t.customer_card_id = c.customer_card_id
+         left JOIN groups g ON c.customer_id = g.customer_id AND g.group_id = gs.group_id and g.group_churn_rate < 3 and
+                               g.group_discount_share <= 0.7 and g.group_minimum_discount != 0
          JOIN periods p ON g.customer_id = p.customer_id AND g.group_id = p.group_id
-where g.group_churn_rate < 3
-and g.group_discount_share < 0.7
+where ceil(g.group_minimum_discount / 0.05) * 5 < 0.3 * (SELECT group_margin
+                                                         FROM calculate_average_margin(4, 0, 0)
+                                                         WHERE customer_id = c.customer_id
+                                                           AND group_id = gs.group_id)
 
-GROUP BY c.customer_id, g.group_id, g.group_discount_share, g.group_churn_rate, p.group_frequency, g.group_minimum_discount
+GROUP BY c.customer_id, g.group_id, gs.group_name, g.group_discount_share, g.group_churn_rate, p.group_frequency,
+         g.group_minimum_discount
 ORDER BY c.customer_id, p.group_frequency DESC
-LIMIT 100;
 
--- -- Формирование маржи по группам
--- SELECT customer_id,
---        group_id,
---        SUM(group_summ_paid - group_cost) AS group_margin
--- FROM purchase_history
--- GROUP BY customer_id, group_id
--- ORDER BY customer_id, group_id;
---
---
--- -- Выборка всех данных
--- SELECT *
--- FROM calculate_average_margin(0);
---
--- -- Выборка данных за последние 7 дней
--- SELECT *
--- FROM calculate_average_margin(1, 100);
---
--- -- Выборка последних 10 транзакций
--- SELECT *
--- FROM calculate_average_margin(2, 0, 100);
---
--- -- Выборка данных за период с 2023-01-01 по 2023-02-01
--- SELECT *
--- FROM calculate_average_margin(3, 0, 0, '2021-07-01', '2023-02-01');
+
+
+SELECT ph.customer_id,
+       ph.group_id,
+       AVG(ph.group_summ_paid - ph.group_cost) AS group_margin
+FROM purchase_history ph
+         JOIN transactions t ON t.transaction_id = ph.transaction_id
+WHERE t.transaction_id >= (SELECT MAX(transaction_id) - 100 FROM transactions)
+GROUP BY ph.customer_id, ph.group_id
+ORDER BY MAX(t.transaction_id) DESC
+
+
+-- Выборка всех данных
+SELECT *
+FROM calculate_average_margin(0);
+
+-- Выборка данных за последние 7 дней
+SELECT *
+FROM calculate_average_margin(1, 100);
+
+-- Выборка последних 10 транзакций
+SELECT *
+FROM calculate_average_margin(2, 0, 100);
+
+-- Выборка данных за период с 2023-01-01 по 2023-02-01
+SELECT *
+FROM calculate_average_margin(3, 0, 0, '2021-07-01', '2023-02-01');
+
+
+
+
+
+
+
