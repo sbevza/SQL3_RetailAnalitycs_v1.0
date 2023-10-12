@@ -1,89 +1,67 @@
-CREATE OR REPLACE FUNCTION form_offer_for_visit_frequency(
-    p_start_date timestamp without time zone,
-    p_end_date timestamp without time zone,
-    p_added_transactions numeric,
-    p_max_churn numeric,
-    p_max_discount numeric,
-    p_max_margin numeric
+CREATE OR REPLACE FUNCTION generate_offers(
+    p_start_date DATE,
+    p_end_date DATE,
+    added_transactions INT,
+    max_churn_index NUMERIC,
+    max_discount_share_percent NUMERIC,
+    acceptable_margin_percent NUMERIC
 )
-    RETURNS TABLE (
-                      Customer_ID INT,
-                      Start_Date timestamp without time zone,
-                      End_Date timestamp without time zone,
-                      Required_Transactions_Count numeric,
-                      Group_Name varchar(255),
-                      Offer_Discount_Depth numeric
-                  )
-AS $$
-DECLARE
-    selected_group varchar(255);
-BEGIN
-    -- Расчет Group_Demand_Index
-    SELECT INTO selected_group
-        g.Group_Name
-    FROM Groups_SKU g
-             JOIN (
-        SELECT s.Group_ID
-        FROM SKU s
-        WHERE s.SKU_ID IN (
-            SELECT c.SKU_ID
-            FROM Checks c
-                     JOIN SKU s ON c.SKU_ID = s.SKU_ID
-            GROUP BY s.Group_ID, c.SKU_ID
-            HAVING COUNT(c.SKU_ID) >= ALL (
-                SELECT COUNT(c2.SKU_ID)
-                FROM Checks c2
-                WHERE c2.SKU_ID = c.SKU_ID
-                GROUP BY c2.SKU_ID
+    RETURNS TABLE
+            (
+                Customer_ID                 INT,
+                Start_Date                  TIMESTAMP,
+                End_Date                    TIMESTAMP,
+                Required_Transactions_Count INT,
+                Group_Name                  VARCHAR,
+                Offer_Discount_Depth        NUMERIC
             )
-        )
-    ) AS top_group ON g.Group_ID = top_group.Group_ID
-    LIMIT 1;
+AS
+$$
+BEGIN
+
+    IF p_start_date > p_end_date THEN
+        RAISE EXCEPTION 'ERROR: Start date have to less then end date';
+    END IF;
 
     RETURN QUERY
-        SELECT
-            c.Customer_ID,
-            p_start_date AS Start_Date,
-            p_end_date AS End_Date,
-            p_added_transactions AS Required_Transactions_Count,
-            selected_group AS Group_Name,
-            p_max_margin AS Offer_Discount_Depth
-        FROM Personal_Data c
-                 JOIN Cards card ON c.Customer_ID = card.Customer_ID
-                 LEFT JOIN (
-            SELECT
-                t.Customer_Card_ID,
-                COUNT(DISTINCT t.Transaction_ID) /
-                DATE_PART('day', p_end_date - p_start_date) AS Customer_Frequency
-            FROM Transactions t
-            WHERE t.Transaction_DateTime >= p_start_date
-              AND t.Transaction_DateTime <= p_end_date
-            GROUP BY t.Customer_Card_ID
-        ) AS freq ON card.Customer_Card_ID = freq.Customer_Card_ID
-        WHERE freq.Customer_Frequency IS NULL OR freq.Customer_Frequency <= p_max_churn;
+        WITH Required_Transactions
+                 AS (SELECT c.Customer_ID,
+                            p_start_date::TIMESTAMP,
+                            p_end_date::TIMESTAMP,
+                            ROUND((p_end_date - p_start_date) / c.customer_frequency)::INTEGER
+                                + added_transactions AS Required_Transactions_Count
+                     FROM Customers c),
 
-    RETURN;
+             Rewards
+                 AS (SELECT g.customer_id,
+                            g.group_id,
+                            ceil(g.group_minimum_discount / 0.05) * 5                                          AS Offer_Discount_Depth,
+                            row_number()
+                            OVER (PARTITION BY g.customer_id, g.group_id ORDER BY g.group_affinity_index DESC) as rn
+                     FROM groups g
+                              LEFT JOIN purchase_history ph
+                                        ON g.customer_id = ph.customer_id AND g.group_id = ph.group_id
+                     WHERE g.group_churn_rate <= max_churn_index
+                       AND g.group_discount_share * 100 < max_discount_share_percent
+                     GROUP BY g.customer_id, g.group_id, ceil(g.group_minimum_discount / 0.05) * 5, g.group_affinity_index
+                     HAVING (acceptable_margin_percent / 100) *
+                            AVG((ph.group_summ_paid - ph.group_cost) / (ph.group_summ_paid / 100))
+                                > ceil(g.group_minimum_discount / 0.05) * 5
+                     ORDER BY g.customer_id, g.group_affinity_index DESC, rn DESC)
+
+        SELECT rt.customer_id,
+               rt.p_start_date AS Start_Date,
+               rt.p_end_date   AS End_Date,
+               rt.Required_Transactions_Count,
+               gs.group_name,
+               r.Offer_Discount_Depth
+        FROM Required_Transactions rt
+                 LEFT JOIN Rewards r ON rt.customer_id = r.customer_id
+                    LEFT JOIN groups_sku gs ON r.group_id = gs.group_id
+        WHERE r.rn = 1;
 END;
 $$ LANGUAGE plpgsql;
 
 
-
-SELECT *
-FROM form_offer_for_visit_frequency(
-        '2023-09-01'::TIMESTAMP, -- Начальная дата периода
-        '2023-09-30'::TIMESTAMP, -- Конечная дата периода
-        3,                      -- Добавляемое число транзакций
-        10,                    -- Максимальный индекс оттока
-        15,                    -- Максимальная доля транзакций со скидкой
-        0.4                     -- Допустимая доля маржи
-    );
-
-SELECT *
-FROM form_offer_for_visit_frequency(
-        '2018-09-01'::TIMESTAMP, -- Начальная дата периода
-        '2023-09-30'::TIMESTAMP, -- Конечная дата периода
-        2,                      -- Добавляемое число транзакций (просто для начала)
-        50,                    -- Максимальный индекс оттока (пусть будет выше)
-        14,                    -- Максимальная доля транзакций со скидкой (пусть будет выше)
-        30                    -- Допустимая доля маржи (пусть будет выше)
-    );
+Select *
+FROM generate_offers('2022-08-18', '2022-08-18', 1, 3, 70, 30);
