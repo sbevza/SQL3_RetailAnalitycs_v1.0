@@ -51,7 +51,7 @@ BEGIN
                       WHERE transaction_datetime BETWEEN start_date AND end_date
                       GROUP BY ph.customer_id, ph.group_id
                       ORDER BY ph.customer_id, ph.group_id);
-        WHEN p_mode = 4 THEN -- Режим 4: Средняя маржа Выборка за период с start_date по end_date
+        WHEN p_mode = 4 THEN -- Режим 4: Средняя маржа по количеству последних транзакций
         RETURN QUERY (SELECT ph.customer_id,
                              ph.group_id,
                              AVG((ph.Group_Summ_Paid - ph.group_cost)/(ph.Group_Summ_Paid/100)) AS group_margin
