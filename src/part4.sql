@@ -18,65 +18,58 @@ CREATE OR REPLACE FUNCTION form_offer_for_average_check(
 AS
 $$
 BEGIN
-    CREATE TEMP TABLE temp_result_table
-    (
-        Customer_ID            INT,
-        Required_Check_Measure DECIMAL,
-        Group_Name             VARCHAR(255),
-        Offer_Discount_Depth   DECIMAL
-    ) ON COMMIT DROP;
-
     IF calc_method = 1 THEN
-        -- Расчет по периоду и вставка данных во временную таблицу
-        INSERT INTO temp_result_table (Customer_ID, Required_Check_Measure, Group_Name)
-        SELECT c.customer_id,
-               SUM(t.transaction_summ) / COUNT(t.transaction_id) * increase_coeff,
-               NULL::VARCHAR(255)
-        FROM cards c
-                 JOIN transactions t ON t.customer_card_id = c.customer_card_id
-        WHERE t.transaction_datetime BETWEEN start_date AND end_date
-        GROUP BY c.customer_id;
+
     ELSIF calc_method = 2 THEN
         -- Расчет по количеству транзакций и вставка данных во временную таблицу
-        INSERT INTO temp_result_table (Customer_ID, Required_Check_Measure, Group_Name)
-        SELECT c.customer_id,
-               SUM(t.transaction_summ) / COUNT(t.transaction_id) * 1.15,
-               NULL::VARCHAR(255)
-        FROM cards c
-                 JOIN transactions t ON t.customer_card_id = c.customer_card_id
-        GROUP BY c.customer_id
-        ORDER BY MAX(t.transaction_id) DESC
-        LIMIT transaction_count;
+        return query (
+            with part1 as (SELECT c.customer_id,
+                                  c.group_id,
+                                  gs.group_name,
+                                  c.group_margin
+
+                           FROM calculate_average_margin(4, 0, transaction_count) c
+                                    left join groups_sku gs on gs.group_id = c.group_id
+
+                           order by c.customer_id, gs.group_name),
+
+                 groups as (select *
+
+                            from groups
+                            where group_churn_rate < max_churn_index
+                              and group_discount_share < (max_discount_percentage/100)),
+                 Required_Check as (select cards.customer_id,
+                                           round(SUM(t.transaction_summ) / COUNT(t.transaction_id) * increase_coeff, 2) as Required_Check_Measure
+                                    from cards
+                                             join transactions t on cards.customer_card_id = t.customer_card_id
+                                    group by cards.customer_id),
+
+                 RankedGroups AS (select p1.customer_id,
+                                         rc.Required_Check_Measure,
+                                         p1.group_name,
+                                         ceil(g.group_minimum_discount / 0.05) * 5                                       as Offer_Discount_Depth,
+                                         ROW_NUMBER() OVER (PARTITION BY p1.customer_id ORDER BY p.group_frequency DESC) AS rn
+
+
+                                  from part1 p1
+                                           left join groups g on g.customer_id = p1.customer_id and g.group_id = p1.group_id
+                                           left join periods p on p.customer_id = p1.customer_id and p.group_id = p1.group_id
+                                           left join Required_Check rc on rc.customer_id = p1.customer_id
+                                  where ceil(g.group_minimum_discount / 0.05) * 5 <= p1.group_margin * (max_margin_percentage/100)
+                                  order by customer_id, p.group_frequency desc)
+
+
+            SELECT RankedGroups.customer_id,
+                   RankedGroups.Required_Check_Measure,
+                   RankedGroups.group_name,
+                   RankedGroups.Offer_Discount_Depth
+            FROM RankedGroups
+            WHERE rn = 1
+            ORDER BY customer_id);
     END IF;
 
-    -- Определяем Group_Name для каждого Customer_ID в таблице temp_result_table
-    UPDATE temp_result_table AS trt
-    SET Group_Name = (SELECT DISTINCT ON (c.customer_id) gs.group_name
-                      FROM cards c
-
-                               JOIN transactions t ON t.customer_card_id = c.customer_card_id
-                               JOIN groups g ON c.customer_id = g.customer_id AND g.group_id = group_id
-                               JOIN periods p ON g.customer_id = p.customer_id AND g.group_id = p.group_id
-                               JOIN groups_sku gs on gs.group_id = p.group_id
-                      where g.group_churn_rate < 3
-                        and g.group_discount_share <= 0.7
-
-                      ORDER BY c.customer_id, p.group_frequency DESC)
-    WHERE EXISTS (SELECT 1
-                  FROM Periods pd
-                           JOIN Customers cu ON pd.customer_id = cu.customer_id
-                  WHERE pd.customer_id = trt.Customer_ID);
-
-    UPDATE temp_result_table AS trt
-    SET Offer_Discount_Depth = CEIL(g.group_minimum_discount * 100 / 5) * 5
-    FROM groups g
-             JOIN groups_sku gs ON g.group_id = gs.group_id
-    WHERE gs.group_name = trt.Group_Name
-      AND trt.Customer_ID = G.customer_id;
 
 
-    RETURN QUERY
-        SELECT * FROM temp_result_table;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -137,14 +130,49 @@ ORDER BY c.customer_id, p.group_frequency DESC
 
 
 
-SELECT ph.customer_id,
-       ph.group_id,
-       AVG(ph.group_summ_paid - ph.group_cost) AS group_margin
-FROM purchase_history ph
-         JOIN transactions t ON t.transaction_id = ph.transaction_id
-WHERE t.transaction_id >= (SELECT MAX(transaction_id) - 100 FROM transactions)
-GROUP BY ph.customer_id, ph.group_id
-ORDER BY MAX(t.transaction_id) DESC
+with part1 as (SELECT c.customer_id,
+                      c.group_id,
+                      gs.group_name,
+                      c.group_margin
+
+               FROM calculate_average_margin(4, 0, 100) c
+                        left join groups_sku gs on gs.group_id = c.group_id
+
+               order by c.customer_id, gs.group_name),
+
+     groups as (select *
+
+                from groups
+                where group_churn_rate < 3
+                  and group_discount_share < 0.7),
+     Required_Check as (select cards.customer_id,
+                               round(SUM(t.transaction_summ) / COUNT(t.transaction_id) * 1.15, 2) as Required_Check_Measure
+                        from cards
+                                 join transactions t on cards.customer_card_id = t.customer_card_id
+                        group by cards.customer_id),
+
+     RankedGroups AS (select p1.customer_id,
+                             rc.Required_Check_Measure,
+                             p1.group_name,
+                             ceil(g.group_minimum_discount / 0.05) * 5                                       as Offer_Discount_Depth,
+                             ROW_NUMBER() OVER (PARTITION BY p1.customer_id ORDER BY p.group_frequency DESC) AS rn
+
+
+                      from part1 p1
+                               left join groups g on g.customer_id = p1.customer_id and g.group_id = p1.group_id
+                               left join periods p on p.customer_id = p1.customer_id and p.group_id = p1.group_id
+                               left join Required_Check rc on rc.customer_id = p1.customer_id
+                      where ceil(g.group_minimum_discount / 0.05) * 5 <= p1.group_margin * 0.3
+                      order by customer_id, p.group_frequency desc)
+
+
+SELECT customer_id,
+       Required_Check_Measure,
+       group_name,
+       Offer_Discount_Depth
+FROM RankedGroups
+WHERE rn = 1
+ORDER BY customer_id;
 
 
 -- Выборка всех данных

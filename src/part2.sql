@@ -51,15 +51,22 @@ BEGIN
                       WHERE transaction_datetime BETWEEN start_date AND end_date
                       GROUP BY ph.customer_id, ph.group_id
                       ORDER BY ph.customer_id, ph.group_id);
-        WHEN p_mode = 4 THEN -- Режим 3: Выборка за период с start_date по end_date
+        WHEN p_mode = 4 THEN -- Режим 4: Средняя маржа Выборка за период с start_date по end_date
         RETURN QUERY (SELECT ph.customer_id,
                              ph.group_id,
                              AVG((ph.Group_Summ_Paid - ph.group_cost)/(ph.Group_Summ_Paid/100)) AS group_margin
                       FROM purchase_history ph
-                               JOIN transactions t ON t.transaction_id = ph.transaction_id
-                      WHERE t.transaction_id >= (SELECT MAX(transaction_id) - 100 FROM transactions)
+                      WHERE ph.transaction_id >= (SELECT MAX(transaction_id) - p_transactions_count FROM transactions)
                       GROUP BY ph.customer_id, ph.group_id
-                      ORDER BY MAX(t.transaction_id) DESC);
+                      ORDER BY MAX(ph.transaction_id) DESC);
+        WHEN p_mode = 5 THEN -- Режим 5: Средняя маржа в процентах за период с start_date по end_date
+        RETURN QUERY (SELECT ph.customer_id,
+                             ph.group_id,
+                             AVG((ph.Group_Summ_Paid - ph.group_cost)/(ph.Group_Summ_Paid/100)) AS group_margin
+                      FROM purchase_history ph
+                      WHERE transaction_datetime BETWEEN start_date AND end_date
+                      GROUP BY ph.customer_id, ph.group_id
+                      ORDER BY ph.customer_id, ph.group_id);
 
         END CASE;
 
@@ -387,12 +394,12 @@ FROM affinity_index_groups aig
 -- FROM calculate_average_margin(0);
 --
 -- Выборка данных за последние 100 дней
-SELECT *
-FROM calculate_average_margin(1, 100);
+-- SELECT *
+-- FROM calculate_average_margin(1, 100);
 
 -- -- Выборка последних 100 транзакций
-SELECT *
-FROM calculate_average_margin(2, 0, 100);
+-- SELECT *
+-- FROM calculate_average_margin(4, 0, 0);
 --
 -- -- Выборка данных за период с 2023-01-01 по 2023-02-01
 -- SELECT *
