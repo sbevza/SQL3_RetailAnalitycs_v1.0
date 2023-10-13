@@ -42,11 +42,16 @@ BEGIN
                               LEFT JOIN purchase_history ph
                                         ON g.customer_id = ph.customer_id AND g.group_id = ph.group_id
                      WHERE g.group_churn_rate <= max_churn_index
-                       AND g.group_discount_share * 100 < max_discount_share_percent
-                     GROUP BY g.customer_id, g.group_id, ceil(g.group_minimum_discount / 0.05) * 5, g.group_affinity_index
-                     HAVING (acceptable_margin_percent / 100) *
-                            AVG((ph.group_summ_paid - ph.group_cost) / (ph.group_summ_paid / 100))
-                                > ceil(g.group_minimum_discount / 0.05) * 5
+                       AND g.group_discount_share * 100 <= max_discount_share_percent
+                     GROUP BY g.customer_id, g.group_id, ceil(g.group_minimum_discount / 0.05) * 5,
+                              g.group_affinity_index
+                     HAVING acceptable_margin_percent *
+                            AVG((ph.group_summ_paid - ph.group_cost) / ph.group_summ_paid)
+                                >= ceil(g.group_minimum_discount / 0.05) * 5
+--                   Этот вариант ближе к чеклисту
+--                      HAVING acceptable_margin_percent *
+--                             AVG((ph.group_summ - ph.group_cost) / ph.group_summ)
+--                                 >= ceil(g.group_minimum_discount / 0.05) * 5
                      ORDER BY g.customer_id, g.group_affinity_index DESC, rn DESC)
 
         SELECT rt.customer_id,
@@ -57,7 +62,7 @@ BEGIN
                r.Offer_Discount_Depth
         FROM Required_Transactions rt
                  LEFT JOIN Rewards r ON rt.customer_id = r.customer_id
-                    LEFT JOIN groups_sku gs ON r.group_id = gs.group_id
+                 LEFT JOIN groups_sku gs ON r.group_id = gs.group_id
         WHERE r.rn = 1;
 END;
 $$ LANGUAGE plpgsql;
